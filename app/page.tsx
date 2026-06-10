@@ -443,18 +443,25 @@ export default function Home() {
       return;
     }
 
-    setUnassignedImages((prev) => prev.filter((img) => img.id !== image.id));
-    setBatchGroups((prev) =>
-      prev.map((group) => {
-        const withoutDragged = group.images.filter((img) => img.id !== image.id);
+    if (payload.source === "unassigned") {
+      setBatchGroups((prev) =>
+        prev.map((group) =>
+          group.id === targetBatchId ? { ...group, images: [...group.images, image] } : group
+        )
+      );
+    } else {
+      setBatchGroups((prev) =>
+        prev.map((group) => {
+          const withoutDragged = group.images.filter((img) => img.id !== image.id);
 
-        if (group.id === targetBatchId) {
-          return { ...group, images: [...withoutDragged, image] };
-        }
+          if (group.id === targetBatchId) {
+            return { ...group, images: [...withoutDragged, image] };
+          }
 
-        return { ...group, images: withoutDragged };
-      })
-    );
+          return { ...group, images: withoutDragged };
+        })
+      );
+    }
     setBatchResults((prev) => prev.filter((r) => !r.references.some((img) => img.id === image.id)));
     setError("");
     setStatusText("");
