@@ -2,7 +2,7 @@
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 
-type Mode = "image" | "video";
+type Mode = "image" | "batch" | "video";
 type MediaKind = "image" | "video";
 
 type Preview = {
@@ -20,6 +20,11 @@ type WanParams = {
   cfg: number;
 };
 
+type QwenParams = {
+  width: number;
+  height: number;
+};
+
 type ReferenceImage = {
   id: string;
   base64: string;
@@ -27,9 +32,16 @@ type ReferenceImage = {
   fileName: string;
 };
 
+type BatchGroup = {
+  id: string;
+  label: string;
+  images: ReferenceImage[];
+};
+
 type BatchImageResult = {
-  referenceId: string;
-  referenceFileName: string;
+  batchId: string;
+  referenceFileNames: string[];
+  references: ReferenceImage[];
   src: string;
 };
 
@@ -49,8 +61,28 @@ const initialWanParams: WanParams = {
   cfg: 5
 };
 
+const initialQwenParams: QwenParams = {
+  width: 1024,
+  height: 1024
+};
+
 function stripDataUrlPrefix(value: string) {
   return value.replace(/^data:[^;]+;base64,/, "");
+}
+
+function toBatchGroups(referenceImages: ReferenceImage[]): BatchGroup[] {
+  const groups: BatchGroup[] = [];
+
+  for (let i = 0; i < referenceImages.length; i += 4) {
+    const images = referenceImages.slice(i, i + 4);
+    groups.push({
+      id: images.map((img) => img.id).join("-"),
+      label: `Batch ${groups.length + 1}`,
+      images
+    });
+  }
+
+  return groups;
 }
 
 function isVideoUrl(value: string) {
@@ -139,12 +171,15 @@ export default function Home() {
   const [mode, setMode] = useState<Mode>("image");
   const [prompt, setPrompt] = useState("");
   const [images, setImages] = useState<ReferenceImage[]>([]);
+  const [qwenParams, setQwenParams] = useState<QwenParams>(initialQwenParams);
   const [wanParams, setWanParams] = useState<WanParams>(initialWanParams);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [batchResults, setBatchResults] = useState<BatchImageResult[]>([]);
   const [error, setError] = useState("");
   const [statusText, setStatusText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  const batchGroups = useMemo(() => toBatchGroups(images), [images]);
 
   useEffect(() => {
     setApiKey(sessionStorage.getItem("runpodApiKey") ?? "");
@@ -160,15 +195,19 @@ export default function Home() {
 
   const actionLabel = useMemo(() => {
     if (isLoading) {
-      return mode === "image" ? "Generating images..." : "Generating video...";
+      if (mode === "batch") return "Generating images...";
+      if (mode === "video") return "Generating video...";
+      return "Generating image...";
     }
 
-    if (mode === "image" && images.length > 1) {
-      return `Generate ${images.length} Images`;
+    if (mode === "batch" && batchGroups.length > 1) {
+      return `Generate ${batchGroups.length} Batches`;
     }
 
-    return mode === "image" ? "Generate Image" : "Generate Video";
-  }, [isLoading, mode, images.length]);
+    if (mode === "batch") return "Generate Batch";
+    if (mode === "image") return "Generate Image";
+    return "Generate Video";
+  }, [batchGroups.length, isLoading, mode]);
 
   async function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
     const files = event.target.files;
@@ -198,16 +237,24 @@ export default function Home() {
 
     if (mode === "video") {
       setImages(newImages.slice(0, 1));
-    } else {
-      setImages((prev) => [...prev, ...newImages]);
+      return;
     }
+
+    setImages((prev) => [...prev, ...newImages]);
   }
 
   function removeImage(id: string) {
     setImages((prev) => prev.filter((img) => img.id !== id));
-    if (batchResults.length > 0) {
-      setBatchResults((prev) => prev.filter((r) => r.referenceId !== id));
-    }
+    setBatchResults((prev) => prev.filter((r) => !r.references.some((img) => img.id === id)));
+  }
+
+  function removeBatchGroup(id: string) {
+    const group = batchGroups.find((item) => item.id === id);
+    if (!group) return;
+
+    const imageIds = new Set(group.images.map((img) => img.id));
+    setImages((prev) => prev.filter((img) => !imageIds.has(img.id)));
+    setBatchResults((prev) => prev.filter((r) => r.batchId !== id));
   }
 
   function clearAllImages() {
@@ -218,6 +265,13 @@ export default function Home() {
 
   function setWanNumber(key: keyof WanParams, value: string) {
     setWanParams((current) => ({
+      ...current,
+      [key]: Number(value)
+    }));
+  }
+
+  function setQwenNumber(key: keyof QwenParams, value: string) {
+    setQwenParams((current) => ({
       ...current,
       [key]: Number(value)
     }));
@@ -298,55 +352,74 @@ export default function Home() {
 
     try {
       if (mode === "image") {
-        if (images.length === 1) {
-          setStatusText("Sending image request to Qwen...");
-          const response = await fetch("/api/qwen", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              apiKey: apiKey.trim(),
-              prompt,
-              imageBase64: images[0].base64
-            })
-          });
-          const data = await parseJsonResponse(response);
-          const result = toPreview(data, "image");
+        setPreview(null);
 
-          if (!result) {
-            throw new Error("No image URL or base64 output was found in the Qwen response.");
-          }
-
-          setPreview(result);
-          setStatusText("Image complete.");
-          return;
+        const body: Record<string, unknown> = {
+          apiKey: apiKey.trim(),
+          prompt,
+          imageBase64: images[0].base64,
+          ...qwenParams
+        };
+        for (let i = 1; i < images.length; i++) {
+          body[`imageBase64${i + 1}`] = images[i].base64;
         }
 
+        setStatusText("Sending image request to Qwen...");
+        const response = await fetch("/api/qwen", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        const data = await parseJsonResponse(response);
+        const result = toPreview(data, "image");
+
+        if (!result) {
+          throw new Error("No image URL or base64 output was found in the Qwen response.");
+        }
+
+        setPreview(result);
+        setStatusText("Image complete.");
+        return;
+      }
+
+      if (mode === "batch") {
         setBatchResults([]);
         const results: BatchImageResult[] = [];
         let nextIndex = 0;
-        let completed = 0;
+        let started = 0;
         const concurrency = 3;
+        const groups = batchGroups;
 
-        async function processOne(img: ReferenceImage) {
-          const num = ++completed;
-          setStatusText(`[${num}/${images.length}] Processing ${img.fileName}...`);
+        async function processOne(group: BatchGroup) {
+          const num = ++started;
+          setStatusText(
+            `[${num}/${groups.length}] Processing ${group.label} (${group.images.length} refs)...`
+          );
+
+          const body: Record<string, unknown> = {
+            apiKey: apiKey.trim(),
+            prompt,
+            imageBase64: group.images[0].base64,
+            ...qwenParams
+          };
+
+          for (let i = 1; i < group.images.length; i += 1) {
+            body[`imageBase64${i + 1}`] = group.images[i].base64;
+          }
 
           const res = await fetch("/api/qwen", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              apiKey: apiKey.trim(),
-              prompt,
-              imageBase64: img.base64
-            })
+            body: JSON.stringify(body)
           });
           const data = await parseJsonResponse(res);
           const result = toPreview(data, "image");
 
           if (result) {
             results.push({
-              referenceId: img.id,
-              referenceFileName: img.fileName,
+              batchId: group.id,
+              referenceFileNames: group.images.map((img) => img.fileName),
+              references: group.images,
               src: result.src
             });
             setBatchResults([...results]);
@@ -354,24 +427,24 @@ export default function Home() {
         }
 
         const workers: Promise<void>[] = [];
-        for (let i = 0; i < Math.min(concurrency, images.length); i++) {
+        for (let i = 0; i < Math.min(concurrency, groups.length); i++) {
           workers.push(
             (async () => {
               while (true) {
                 const idx = nextIndex++;
-                if (idx >= images.length) break;
-                await processOne(images[idx]);
+                if (idx >= groups.length) break;
+                await processOne(groups[idx]);
               }
             })()
           );
         }
         await Promise.all(workers);
 
-        const failed = images.length - results.length;
+        const failed = groups.length - results.length;
         setStatusText(
           failed > 0
             ? `Batch complete: ${results.length} succeeded, ${failed} failed.`
-            : `Batch complete: all ${results.length} images succeeded.`
+            : `Batch complete: all ${results.length} batches succeeded.`
         );
         return;
       }
@@ -439,6 +512,17 @@ export default function Home() {
             </button>
             <button
               type="button"
+              className={mode === "batch" ? "active" : ""}
+              onClick={() => {
+                setMode("batch");
+                setStatusText("");
+                setError("");
+              }}
+            >
+              Batch
+            </button>
+            <button
+              type="button"
               className={mode === "video" ? "active" : ""}
               onClick={() => {
                 setMode("video");
@@ -452,12 +536,12 @@ export default function Home() {
           </div>
 
           <label className="field">
-            <span>Reference Image{mode === "image" ? "s" : ""}</span>
+            <span>Reference Image{mode !== "video" ? "s" : ""}</span>
             <div className="file-input-row">
               <input
                 type="file"
                 accept="image/*"
-                multiple={mode === "image"}
+                multiple={mode !== "video"}
                 onChange={handleImageChange}
               />
               {images.length > 0 ? (
@@ -468,7 +552,7 @@ export default function Home() {
             </div>
           </label>
 
-          {images.length > 0 ? (
+          {images.length > 0 && mode !== "batch" ? (
             <div className="reference-grid">
               {images.map((img) => (
                 <div key={img.id} className="reference-thumb">
@@ -486,19 +570,73 @@ export default function Home() {
             </div>
           ) : null}
 
+          {batchGroups.length > 0 && mode === "batch" ? (
+            <div className="batch-reference-queue" aria-label="Batch reference queue">
+              {batchGroups.map((group) => (
+                <div key={group.id} className="batch-reference-card">
+                  <div className="batch-reference-thumbs">
+                    {group.images.map((img) => (
+                      <img key={img.id} src={img.previewUrl} alt={img.fileName} />
+                    ))}
+                  </div>
+                  <div className="batch-reference-meta">
+                    <strong>{group.label}</strong>
+                    <span title={group.images.map((img) => img.fileName).join(", ")}>
+                      {group.images.length} reference{group.images.length > 1 ? "s" : ""}:{" "}
+                      {group.images.map((img) => img.fileName).join(", ")}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="batch-remove-btn"
+                    onClick={() => removeBatchGroup(group.id)}
+                    aria-label={`Remove ${group.label}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
           <label className="field">
-            <span>{mode === "image" ? "Image Prompt" : "Video Prompt"}</span>
+            <span>{mode === "video" ? "Video Prompt" : "Image Prompt"}</span>
             <textarea
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               placeholder={
-                mode === "image"
-                  ? "Describe the image you want Qwen to generate..."
-                  : "Describe the motion, camera, and visual style..."
+                mode === "video"
+                  ? "Describe the motion, camera, and visual style..."
+                  : "Describe the image you want Qwen to generate..."
               }
-              rows={mode === "image" ? 6 : 7}
+              rows={mode === "video" ? 7 : 6}
             />
           </label>
+
+          {mode !== "video" ? (
+            <div className="param-grid qwen-param-grid">
+              <label className="field">
+                <span>Width</span>
+                <input
+                  type="number"
+                  min="128"
+                  step="8"
+                  value={qwenParams.width}
+                  onChange={(event) => setQwenNumber("width", event.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Height</span>
+                <input
+                  type="number"
+                  min="128"
+                  step="8"
+                  value={qwenParams.height}
+                  onChange={(event) => setQwenNumber("height", event.target.value)}
+                />
+              </label>
+            </div>
+          ) : null}
 
           {mode === "video" ? (
             <div className="advanced">
@@ -590,7 +728,7 @@ export default function Home() {
             <h2>{batchResults.length > 0 ? "Batch Results" : "Latest Preview"}</h2>
             <span>
               {batchResults.length > 0
-                ? `${batchResults.length} image${batchResults.length > 1 ? "s" : ""}`
+                ? `${batchResults.length} batch${batchResults.length > 1 ? "es" : ""}`
                 : preview
                   ? preview.kind
                   : "empty"}
@@ -599,20 +737,45 @@ export default function Home() {
 
           {batchResults.length > 0 ? (
             <div className="results-grid">
-              {batchResults.map((r) => (
-                <div key={r.referenceId} className="result-card">
-                  <img src={r.src} alt={`Generated from ${r.referenceFileName}`} />
-                  <div className="result-card-footer">
-                    <span title={r.referenceFileName}>{r.referenceFileName}</span>
-                    <a
-                      href={r.src}
-                      download={`${r.referenceFileName.replace(/\.[^.]+$/, "")}_generated.png`}
-                    >
-                      ↓
-                    </a>
+              {batchResults.map((r) => {
+                const referenceLabel = r.referenceFileNames.join(", ");
+                const downloadName =
+                  r.referenceFileNames[0]?.replace(/\.[^.]+$/, "") ?? "batch";
+
+                return (
+                  <div key={r.batchId} className="result-card">
+                    <div className="result-card-images">
+                      <div className="result-card-ref-wrap">
+                        <div className="result-card-ref-grid">
+                          {r.references.map((ref) => (
+                            <img
+                              key={ref.id}
+                              className="result-card-ref"
+                              src={ref.previewUrl}
+                              alt={ref.fileName}
+                            />
+                          ))}
+                        </div>
+                        <span className="result-card-label">Input</span>
+                      </div>
+                      <div className="result-card-gen-wrap">
+                        <img
+                          className="result-card-gen"
+                          src={r.src}
+                          alt={`Generated from ${referenceLabel}`}
+                        />
+                        <span className="result-card-label">Output</span>
+                      </div>
+                    </div>
+                    <div className="result-card-footer">
+                      <span title={referenceLabel}>{referenceLabel}</span>
+                      <a href={r.src} download={`${downloadName}_generated.png`}>
+                        ↓
+                      </a>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="preview-frame">

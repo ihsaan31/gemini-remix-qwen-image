@@ -114,7 +114,7 @@ button:disabled {
 
 .mode-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
   padding: 4px;
   background: var(--panel-soft);
@@ -256,6 +256,79 @@ button:disabled {
   transform: scale(1.15);
 }
 
+.batch-reference-queue {
+  display: grid;
+  gap: 10px;
+}
+
+.batch-reference-card {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.batch-reference-thumbs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  width: 72px;
+}
+
+.batch-reference-thumbs img {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  display: block;
+}
+
+.batch-reference-meta {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.batch-reference-meta strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.batch-reference-meta span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-remove-btn {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--danger);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.batch-remove-btn:hover {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+}
+
 .advanced {
   display: grid;
   gap: 14px;
@@ -265,6 +338,10 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+}
+
+.qwen-param-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .submit-button {
@@ -381,16 +458,54 @@ button:disabled {
 .result-card {
   border: 1px solid var(--line);
   border-radius: 8px;
-  overflow: hidden;
   background: var(--panel-soft);
 }
 
-.result-card img {
+.result-card-images {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 10px;
+  padding: 10px 10px 0;
+}
+
+.result-card-ref-wrap,
+.result-card-gen-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.result-card-ref-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+}
+
+.result-card-ref {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  display: block;
+}
+
+.result-card-gen {
   width: 100%;
   aspect-ratio: 1;
   object-fit: contain;
   background: #0f1419;
+  border-radius: 6px;
   display: block;
+}
+
+.result-card-label {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-align: center;
 }
 
 .result-card-footer {
@@ -492,6 +607,20 @@ button:disabled {
   .reference-thumb img {
     width: 72px;
     height: 72px;
+  }
+
+  .batch-reference-card {
+    grid-template-columns: 62px minmax(0, 1fr) 30px;
+    gap: 10px;
+  }
+
+  .batch-reference-thumbs {
+    width: 62px;
+  }
+
+  .batch-reference-thumbs img {
+    width: 29px;
+    height: 29px;
   }
 
   .clear-btn {
