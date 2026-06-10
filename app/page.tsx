@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
 
 type Mode = "image" | "batch" | "video";
 type MediaKind = "image" | "video";
@@ -45,6 +45,12 @@ type BatchImageResult = {
   src: string;
 };
 
+type DragPayload = {
+  imageId: string;
+  source: "unassigned" | "batch";
+  batchId?: string;
+};
+
 const defaultNegativePrompt =
   "blurry, low quality, distorted face, deformed hands, extra fingers, bad anatomy, warped body, flickering, jitter, unstable face, duplicate person, melted face, cartoon, anime, overexposed, underexposed, low resolution";
 
@@ -68,21 +74,6 @@ const initialQwenParams: QwenParams = {
 
 function stripDataUrlPrefix(value: string) {
   return value.replace(/^data:[^;]+;base64,/, "");
-}
-
-function toBatchGroups(referenceImages: ReferenceImage[]): BatchGroup[] {
-  const groups: BatchGroup[] = [];
-
-  for (let i = 0; i < referenceImages.length; i += 4) {
-    const images = referenceImages.slice(i, i + 4);
-    groups.push({
-      id: images.map((img) => img.id).join("-"),
-      label: `Batch ${groups.length + 1}`,
-      images
-    });
-  }
-
-  return groups;
 }
 
 function isVideoUrl(value: string) {
@@ -166,11 +157,36 @@ async function readFileAsDataUrl(file: File) {
   });
 }
 
+async function filesToReferenceImages(files: File[] | FileList) {
+  const images: ReferenceImage[] = [];
+  const skippedFileNames: string[] = [];
+
+  for (const file of Array.from(files)) {
+    if (!file.type.startsWith("image/")) {
+      skippedFileNames.push(file.name);
+      continue;
+    }
+
+    const dataUrl = await readFileAsDataUrl(file);
+    images.push({
+      id: crypto.randomUUID(),
+      base64: stripDataUrlPrefix(dataUrl),
+      previewUrl: dataUrl,
+      fileName: file.name
+    });
+  }
+
+  return { images, skippedFileNames };
+}
+
 export default function Home() {
   const [apiKey, setApiKey] = useState("");
   const [mode, setMode] = useState<Mode>("image");
   const [prompt, setPrompt] = useState("");
   const [images, setImages] = useState<ReferenceImage[]>([]);
+  const [unassignedImages, setUnassignedImages] = useState<ReferenceImage[]>([]);
+  const [batchGroups, setBatchGroups] = useState<BatchGroup[]>([]);
+  const [nextBatchNumber, setNextBatchNumber] = useState(1);
   const [qwenParams, setQwenParams] = useState<QwenParams>(initialQwenParams);
   const [wanParams, setWanParams] = useState<WanParams>(initialWanParams);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -178,8 +194,14 @@ export default function Home() {
   const [error, setError] = useState("");
   const [statusText, setStatusText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [activeDropTarget, setActiveDropTarget] = useState<string | null>(null);
 
-  const batchGroups = useMemo(() => toBatchGroups(images), [images]);
+  const readyBatchGroups = useMemo(
+    () => batchGroups.filter((group) => group.images.length > 0),
+    [batchGroups]
+  );
+  const hasReferences =
+    mode === "batch" ? unassignedImages.length > 0 || batchGroups.length > 0 : images.length > 0;
 
   useEffect(() => {
     setApiKey(sessionStorage.getItem("runpodApiKey") ?? "");
@@ -200,14 +222,14 @@ export default function Home() {
       return "Generating image...";
     }
 
-    if (mode === "batch" && batchGroups.length > 1) {
-      return `Generate ${batchGroups.length} Batches`;
+    if (mode === "batch" && readyBatchGroups.length > 1) {
+      return `Generate ${readyBatchGroups.length} Batches`;
     }
 
     if (mode === "batch") return "Generate Batch";
     if (mode === "image") return "Generate Image";
     return "Generate Video";
-  }, [batchGroups.length, isLoading, mode]);
+  }, [isLoading, mode, readyBatchGroups.length]);
 
   async function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
     const files = event.target.files;
@@ -217,21 +239,8 @@ export default function Home() {
 
     if (!files || files.length === 0) return;
 
-    const newImages: ReferenceImage[] = [];
-
-    for (const file of Array.from(files)) {
-      if (!file.type.startsWith("image/")) {
-        setError(`"${file.name}" is not an image file. Skipped.`);
-        continue;
-      }
-      const dataUrl = await readFileAsDataUrl(file);
-      newImages.push({
-        id: crypto.randomUUID(),
-        base64: stripDataUrlPrefix(dataUrl),
-        previewUrl: dataUrl,
-        fileName: file.name
-      });
-    }
+    const { images: newImages, skippedFileNames } = await filesToReferenceImages(files);
+    showSkippedFileError(skippedFileNames);
 
     if (newImages.length === 0) return;
 
@@ -240,7 +249,19 @@ export default function Home() {
       return;
     }
 
+    if (mode === "batch") {
+      setUnassignedImages((prev) => [...prev, ...newImages]);
+      return;
+    }
+
     setImages((prev) => [...prev, ...newImages]);
+  }
+
+  function showSkippedFileError(fileNames: string[]) {
+    const skipped = fileNames.at(-1);
+    if (skipped) {
+      setError(`"${skipped}" is not an image file. Skipped.`);
+    }
   }
 
   function removeImage(id: string) {
@@ -248,19 +269,195 @@ export default function Home() {
     setBatchResults((prev) => prev.filter((r) => !r.references.some((img) => img.id === id)));
   }
 
-  function removeBatchGroup(id: string) {
-    const group = batchGroups.find((item) => item.id === id);
-    if (!group) return;
+  function removeUnassignedImage(id: string) {
+    setUnassignedImages((prev) => prev.filter((img) => img.id !== id));
+  }
 
-    const imageIds = new Set(group.images.map((img) => img.id));
-    setImages((prev) => prev.filter((img) => !imageIds.has(img.id)));
+  function addBatchGroup() {
+    const label = `Batch ${nextBatchNumber}`;
+    setBatchGroups((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        label,
+        images: []
+      }
+    ]);
+    setNextBatchNumber((current) => current + 1);
+    setError("");
+    setStatusText("");
+  }
+
+  function removeBatchGroup(id: string) {
+    setBatchGroups((prev) => prev.filter((item) => item.id !== id));
     setBatchResults((prev) => prev.filter((r) => r.batchId !== id));
   }
 
   function clearAllImages() {
     setImages([]);
+    setUnassignedImages([]);
+    setBatchGroups([]);
+    setNextBatchNumber(1);
     setBatchResults([]);
     setPreview(null);
+  }
+
+  function getDraggedImage(payload: DragPayload) {
+    if (payload.source === "unassigned") {
+      return unassignedImages.find((img) => img.id === payload.imageId) ?? null;
+    }
+
+    return (
+      batchGroups
+        .find((group) => group.id === payload.batchId)
+        ?.images.find((img) => img.id === payload.imageId) ?? null
+    );
+  }
+
+  function parseDragPayload(event: DragEvent<HTMLElement>) {
+    const raw = event.dataTransfer.getData("application/json");
+    if (!raw) return null;
+
+    try {
+      return JSON.parse(raw) as DragPayload;
+    } catch {
+      return null;
+    }
+  }
+
+  function handleImageDragStart(
+    event: DragEvent<HTMLElement>,
+    image: ReferenceImage,
+    source: DragPayload["source"],
+    batchId?: string
+  ) {
+    const payload: DragPayload = { imageId: image.id, source, batchId };
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/json", JSON.stringify(payload));
+  }
+
+  function handleDragOver(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = event.dataTransfer.types.includes("Files") ? "copy" : "move";
+  }
+
+  function handleDropTargetEnter(event: DragEvent<HTMLElement>, targetId: string) {
+    event.preventDefault();
+    setActiveDropTarget(targetId);
+  }
+
+  function handleDropTargetLeave(event: DragEvent<HTMLElement>, targetId: string) {
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
+    setActiveDropTarget((current) => (current === targetId ? null : current));
+  }
+
+  async function ingestDroppedImages(files: FileList) {
+    setPreview(null);
+    setBatchResults([]);
+
+    const { images: newImages, skippedFileNames } = await filesToReferenceImages(files);
+    showSkippedFileError(skippedFileNames);
+
+    return newImages;
+  }
+
+  async function dropImageToPool(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    setActiveDropTarget(null);
+
+    if (event.dataTransfer.files.length > 0) {
+      const newImages = await ingestDroppedImages(event.dataTransfer.files);
+      if (newImages.length === 0) return;
+
+      setUnassignedImages((prev) => [...prev, ...newImages]);
+      setStatusText("");
+      return;
+    }
+
+    const payload = parseDragPayload(event);
+    if (!payload || payload.source === "unassigned") return;
+
+    const image = getDraggedImage(payload);
+    if (!image) return;
+
+    setBatchGroups((prev) =>
+      prev.map((group) =>
+        group.id === payload.batchId
+          ? { ...group, images: group.images.filter((img) => img.id !== payload.imageId) }
+          : group
+      )
+    );
+    setUnassignedImages((prev) => [...prev.filter((img) => img.id !== image.id), image]);
+    setBatchResults((prev) => prev.filter((r) => !r.references.some((img) => img.id === image.id)));
+    setError("");
+    setStatusText("");
+  }
+
+  async function dropImageToBatch(event: DragEvent<HTMLElement>, targetBatchId: string) {
+    event.preventDefault();
+    setActiveDropTarget(null);
+
+    const targetGroup = batchGroups.find((group) => group.id === targetBatchId);
+    if (!targetGroup) return;
+
+    if (event.dataTransfer.files.length > 0) {
+      const newImages = await ingestDroppedImages(event.dataTransfer.files);
+      if (newImages.length === 0) return;
+
+      const availableSlots = 4 - targetGroup.images.length;
+      if (availableSlots <= 0) {
+        setError("Each batch can include up to 4 reference images.");
+        setStatusText("");
+        return;
+      }
+
+      const imagesToAdd = newImages.slice(0, availableSlots);
+      setBatchGroups((prev) =>
+        prev.map((group) =>
+          group.id === targetBatchId
+            ? { ...group, images: [...group.images, ...imagesToAdd] }
+            : group
+        )
+      );
+
+      if (newImages.length > availableSlots) {
+        setError("Each batch can include up to 4 reference images.");
+      }
+      setStatusText("");
+      return;
+    }
+
+    const payload = parseDragPayload(event);
+    if (!payload) return;
+
+    const image = getDraggedImage(payload);
+    if (!image) return;
+
+    const alreadyInTarget = targetGroup.images.some((img) => img.id === image.id);
+    if (alreadyInTarget) return;
+
+    if (targetGroup.images.length >= 4) {
+      setError("Each batch can include up to 4 reference images.");
+      setStatusText("");
+      return;
+    }
+
+    setUnassignedImages((prev) => prev.filter((img) => img.id !== image.id));
+    setBatchGroups((prev) =>
+      prev.map((group) => {
+        const withoutDragged = group.images.filter((img) => img.id !== image.id);
+
+        if (group.id === targetBatchId) {
+          return { ...group, images: [...withoutDragged, image] };
+        }
+
+        return { ...group, images: withoutDragged };
+      })
+    );
+    setBatchResults((prev) => prev.filter((r) => !r.references.some((img) => img.id === image.id)));
+    setError("");
+    setStatusText("");
   }
 
   function setWanNumber(key: keyof WanParams, value: string) {
@@ -292,12 +489,20 @@ export default function Home() {
       return "Enter your RunPod API key first.";
     }
 
-    if (images.length === 0) {
-      return "Upload at least one reference image first.";
-    }
-
     if (!prompt.trim()) {
       return "Enter a prompt first.";
+    }
+
+    if (mode === "batch") {
+      if (readyBatchGroups.length === 0) {
+        return "Add images to at least one batch first.";
+      }
+
+      return "";
+    }
+
+    if (images.length === 0) {
+      return "Upload at least one reference image first.";
     }
 
     return "";
@@ -388,7 +593,7 @@ export default function Home() {
         let nextIndex = 0;
         let started = 0;
         const concurrency = 3;
-        const groups = batchGroups;
+        const groups = readyBatchGroups;
 
         async function processOne(group: BatchGroup) {
           const num = ++started;
@@ -544,7 +749,7 @@ export default function Home() {
                 multiple={mode !== "video"}
                 onChange={handleImageChange}
               />
-              {images.length > 0 ? (
+              {hasReferences ? (
                 <button type="button" className="clear-btn" onClick={clearAllImages}>
                   Clear all
                 </button>
@@ -570,32 +775,112 @@ export default function Home() {
             </div>
           ) : null}
 
-          {batchGroups.length > 0 && mode === "batch" ? (
-            <div className="batch-reference-queue" aria-label="Batch reference queue">
-              {batchGroups.map((group) => (
-                <div key={group.id} className="batch-reference-card">
-                  <div className="batch-reference-thumbs">
-                    {group.images.map((img) => (
-                      <img key={img.id} src={img.previewUrl} alt={img.fileName} />
+          {mode === "batch" ? (
+            <div className="batch-workspace">
+              <div className="batch-toolbar">
+                <span>
+                  {readyBatchGroups.length} ready batch
+                  {readyBatchGroups.length === 1 ? "" : "es"}
+                </span>
+                <button type="button" className="add-batch-btn" onClick={addBatchGroup}>
+                  +
+                </button>
+              </div>
+
+              <div
+                className={`batch-pool${activeDropTarget === "pool" ? " is-drop-active" : ""}`}
+                onDragEnter={(event) => handleDropTargetEnter(event, "pool")}
+                onDragLeave={(event) => handleDropTargetLeave(event, "pool")}
+                onDragOver={handleDragOver}
+                onDrop={dropImageToPool}
+                aria-label="Unassigned reference images"
+              >
+                <div className="batch-pool-header">
+                  <strong>Unassigned</strong>
+                  <span>
+                    {unassignedImages.length} image
+                    {unassignedImages.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                {unassignedImages.length > 0 ? (
+                  <div className="reference-grid">
+                    {unassignedImages.map((img) => (
+                      <div
+                        key={img.id}
+                        className="reference-thumb draggable-reference"
+                        draggable
+                        onDragStart={(event) => handleImageDragStart(event, img, "unassigned")}
+                      >
+                        <img src={img.previewUrl} alt={img.fileName} />
+                        <button
+                          type="button"
+                          className="remove-btn"
+                          onClick={() => removeUnassignedImage(img.id)}
+                        >
+                          ×
+                        </button>
+                        <span>{img.fileName}</span>
+                      </div>
                     ))}
                   </div>
-                  <div className="batch-reference-meta">
-                    <strong>{group.label}</strong>
-                    <span title={group.images.map((img) => img.fileName).join(", ")}>
-                      {group.images.length} reference{group.images.length > 1 ? "s" : ""}:{" "}
-                      {group.images.map((img) => img.fileName).join(", ")}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    className="batch-remove-btn"
-                    onClick={() => removeBatchGroup(group.id)}
-                    aria-label={`Remove ${group.label}`}
+                ) : (
+                  <p className="batch-empty-state">Drop images here</p>
+                )}
+              </div>
+
+              <div className="batch-reference-queue" aria-label="Batch reference queue">
+                {batchGroups.map((group) => (
+                  <div
+                    key={group.id}
+                    className={`batch-reference-card${
+                      activeDropTarget === group.id ? " is-drop-active" : ""
+                    }`}
+                    onDragEnter={(event) => handleDropTargetEnter(event, group.id)}
+                    onDragLeave={(event) => handleDropTargetLeave(event, group.id)}
+                    onDragOver={handleDragOver}
+                    onDrop={(event) => dropImageToBatch(event, group.id)}
                   >
-                    ×
-                  </button>
-                </div>
-              ))}
+                    <div className="batch-reference-thumbs">
+                      {group.images.length > 0
+                        ? group.images.map((img) => (
+                            <img
+                              key={img.id}
+                              src={img.previewUrl}
+                              alt={img.fileName}
+                              draggable
+                              onDragStart={(event) =>
+                                handleImageDragStart(event, img, "batch", group.id)
+                              }
+                            />
+                          ))
+                        : Array.from({ length: 4 }, (_, index) => (
+                            <span key={index} className="batch-thumb-placeholder" />
+                          ))}
+                    </div>
+                    <div className="batch-reference-meta">
+                      <strong>{group.label}</strong>
+                      <span title={group.images.map((img) => img.fileName).join(", ")}>
+                        {group.images.length > 0
+                          ? `${group.images.length} reference${
+                              group.images.length > 1 ? "s" : ""
+                            }: ${group.images.map((img) => img.fileName).join(", ")}`
+                          : "Drop up to 4 references"}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="batch-remove-btn"
+                      onClick={() => removeBatchGroup(group.id)}
+                      aria-label={`Remove ${group.label}`}
+                    >
+                      −
+                    </button>
+                  </div>
+                ))}
+                {batchGroups.length === 0 ? (
+                  <p className="batch-empty-state">Create a batch, then drag images into it.</p>
+                ) : null}
+              </div>
             </div>
           ) : null}
 

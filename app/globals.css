@@ -261,6 +261,96 @@ button:disabled {
   gap: 10px;
 }
 
+.batch-workspace {
+  display: grid;
+  gap: 12px;
+}
+
+.batch-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.batch-toolbar span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.add-batch-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.add-batch-btn:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+.batch-pool {
+  display: grid;
+  gap: 10px;
+  min-height: 126px;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.batch-pool-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.batch-pool-header strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.batch-pool-header span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.batch-empty-state {
+  margin: 0;
+  min-height: 48px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.draggable-reference {
+  cursor: grab;
+}
+
+.draggable-reference:active,
+.batch-reference-thumbs img:active {
+  cursor: grabbing;
+}
+
 .batch-reference-card {
   display: grid;
   grid-template-columns: 72px minmax(0, 1fr) 30px;
@@ -273,6 +363,18 @@ button:disabled {
   background: var(--panel-soft);
 }
 
+.batch-reference-card:hover,
+.batch-pool:hover {
+  border-color: var(--accent);
+}
+
+.batch-reference-card.is-drop-active,
+.batch-pool.is-drop-active {
+  border-color: var(--accent);
+  background: rgba(39, 115, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(39, 115, 255, 0.12);
+}
+
 .batch-reference-thumbs {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -280,13 +382,25 @@ button:disabled {
   width: 72px;
 }
 
-.batch-reference-thumbs img {
+.batch-reference-thumbs img,
+.batch-thumb-placeholder {
   width: 34px;
   height: 34px;
-  object-fit: cover;
   border: 1px solid var(--line);
   border-radius: 4px;
   display: block;
+}
+
+.batch-reference-thumbs img {
+  object-fit: cover;
+  cursor: grab;
+}
+
+.batch-thumb-placeholder {
+  background:
+    linear-gradient(45deg, transparent 46%, var(--line) 47%, var(--line) 53%, transparent 54%),
+    linear-gradient(-45deg, transparent 46%, var(--line) 47%, var(--line) 53%, transparent 54%),
+    #ffffff;
 }
 
 .batch-reference-meta {
