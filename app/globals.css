@@ -114,7 +114,7 @@ button:disabled {
 
 .mode-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   padding: 4px;
   background: var(--panel-soft);
@@ -298,6 +298,38 @@ button:disabled {
 .add-batch-btn:hover {
   background: var(--accent-strong);
   border-color: var(--accent-strong);
+}
+
+.batch-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.download-all-btn {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.download-all-btn:hover:not(:disabled) {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+.download-all-btn:disabled {
+  background: var(--panel);
+  color: var(--muted);
+  cursor: not-allowed;
+  border-color: var(--line);
 }
 
 .batch-pool {
@@ -661,6 +693,281 @@ button:disabled {
   border-color: var(--accent);
 }
 
+/* ---------- Combo mode ---------- */
+
+.combo-prompts-section {
+  display: grid;
+  gap: 10px;
+}
+
+.combo-prompts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.combo-prompts-header span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.combo-add-prompt-btn {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.combo-add-prompt-btn:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+.combo-prompts {
+  display: grid;
+  gap: 8px;
+}
+
+.combo-prompt-card {
+  display: grid;
+  grid-template-columns: 28px 1fr 28px;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-soft);
+}
+
+.combo-prompt-card:hover {
+  border-color: var(--accent);
+}
+
+.combo-prompt-index {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.combo-prompt-card textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #fff;
+  color: var(--text);
+  outline: none;
+  resize: vertical;
+  min-height: 56px;
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.45;
+}
+
+.combo-prompt-card textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(23, 107, 135, 0.12);
+}
+
+.combo-prompt-remove {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--danger);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.combo-prompt-remove:hover {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+}
+
+.combo-empty-state {
+  margin: 0;
+  min-height: 48px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.combo-summary {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--status-bg);
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* ---------- Combo matrix ---------- */
+
+.combo-matrix-wrapper {
+  overflow: auto;
+  max-height: calc(100vh - 200px);
+}
+
+.combo-matrix {
+  display: grid;
+  gap: 6px;
+}
+
+.combo-matrix-corner {
+  background: transparent;
+}
+
+.combo-matrix-col-header {
+  padding: 6px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.combo-matrix-row {
+  display: contents;
+}
+
+.combo-matrix-row-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.combo-matrix-row-header img {
+  width: 48px;
+  height: 48px;
+  border-radius: 4px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+}
+
+.combo-matrix-row-header span {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 700;
+  max-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combo-matrix-cell {
+  aspect-ratio: 1;
+  min-width: 80px;
+  max-width: 200px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+  background:
+    linear-gradient(45deg, #edf2f7 25%, transparent 25%),
+    linear-gradient(-45deg, #edf2f7 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #edf2f7 75%),
+    linear-gradient(-45deg, transparent 75%, #edf2f7 75%);
+  background-color: #f8fafc;
+  background-position:
+    0 0,
+    0 6px,
+    6px -6px,
+    -6px 0;
+  background-size: 12px 12px;
+}
+
+.combo-matrix-result {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.combo-matrix-result img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #0f1419;
+  display: block;
+}
+
+.combo-matrix-download {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.combo-matrix-result:hover .combo-matrix-download {
+  opacity: 1;
+}
+
+.combo-matrix-download:hover {
+  background: rgba(0, 0, 0, 0.75);
+  border-color: #fff;
+}
+
+.combo-matrix-pending {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
 @media (max-width: 860px) {
   .app-shell {
     width: min(100% - 24px, 680px);
@@ -689,6 +996,26 @@ button:disabled {
 
   .results-grid {
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  }
+
+  .combo-matrix-cell {
+    min-width: 60px;
+    max-width: 140px;
+  }
+
+  .combo-matrix-col-header {
+    max-width: 100px;
+    font-size: 10px;
+  }
+
+  .combo-prompt-card {
+    grid-template-columns: 24px 1fr 24px;
+  }
+
+  .combo-prompt-index {
+    width: 24px;
+    height: 24px;
+    font-size: 11px;
   }
 }
 
@@ -740,5 +1067,29 @@ button:disabled {
   .clear-btn {
     min-width: 60px;
     font-size: 12px;
+  }
+
+  .mode-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .combo-matrix-cell {
+    min-width: 48px;
+    max-width: 90px;
+  }
+
+  .combo-matrix-col-header {
+    max-width: 70px;
+    font-size: 9px;
+  }
+
+  .combo-matrix-row-header img {
+    width: 32px;
+    height: 32px;
+  }
+
+  .combo-matrix-row-header span {
+    max-width: 40px;
+    font-size: 9px;
   }
 }
