@@ -58,6 +58,7 @@ export async function POST(request: Request) {
       method: "POST",
       body: JSON.stringify({ input })
     },
-    290_000
+    290_000,
+    1
   );
 }

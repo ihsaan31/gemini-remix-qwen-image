@@ -831,6 +831,37 @@ button:disabled {
   text-align: center;
 }
 
+.combo-summary-complete {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+}
+
+.combo-download-all-btn {
+  height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.combo-download-all-btn:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.combo-download-all-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ---------- Combo matrix ---------- */
 
 .combo-matrix-wrapper {

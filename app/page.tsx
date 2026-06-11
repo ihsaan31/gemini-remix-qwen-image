@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import JSZip from "jszip";
 
 type Mode = "image" | "batch" | "video" | "combo";
 type MediaKind = "image" | "video";
@@ -88,6 +89,33 @@ const initialQwenParams: QwenParams = {
 
 function stripDataUrlPrefix(value: string) {
   return value.replace(/^data:[^;]+;base64,/, "");
+}
+
+async function downloadAsZip(
+  items: Array<{ filename: string; src: string }>,
+  zipFileName: string
+) {
+  const zip = new JSZip();
+
+  for (const item of items) {
+    try {
+      const response = await fetch(item.src);
+      const blob = await response.blob();
+      zip.file(item.filename, blob);
+    } catch {
+      // Skip individual files that fail to fetch
+    }
+  }
+
+  const blob = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = zipFileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function isVideoUrl(value: string) {
@@ -315,18 +343,12 @@ export default function Home() {
   }
 
   function downloadAllResults() {
-    batchResults.forEach((r, i) => {
-      const downloadName =
+    const items = batchResults.map((r) => {
+      const name =
         r.referenceFileNames[0]?.replace(/\.[^.]+$/, "") ?? "batch";
-      setTimeout(() => {
-        const a = document.createElement("a");
-        a.href = r.src;
-        a.download = `${downloadName}_generated.png`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }, i * 100);
+      return { filename: `${name}_generated.png`, src: r.src };
     });
+    downloadAsZip(items, "batch_results.zip");
   }
 
   function addBatchGroup() {
@@ -649,6 +671,18 @@ export default function Home() {
     setComboResults([]);
     setComboProgress({ done: 0, total: 0 });
   }
+
+  function downloadAllComboResults() {
+    const items = comboResults.map((r) => {
+      const imageName = r.imageFileName.replace(/\.[^.]+$/, "") ?? "combo";
+      const promptSlug = r.promptText.slice(0, 30).replace(/\s+/g, "_");
+      return { filename: `${imageName}_${promptSlug}.png`, src: r.src };
+    });
+    downloadAsZip(items, "combo_results.zip");
+  }
+
+  const comboIsComplete =
+    comboProgress.total > 0 && comboProgress.done === comboProgress.total;
 
   function validateComboForm() {
     if (!apiKey.trim()) return "Enter your RunPod API key first.";
@@ -1185,12 +1219,29 @@ export default function Home() {
                 )}
               </div>
 
-              {comboCount > 0 ? (
+              {comboCount > 0 && !comboIsComplete ? (
                 <p className="combo-summary">
                   {comboImages.length} image{comboImages.length > 1 ? "s" : ""} ×{" "}
                   {readyComboPrompts.length} prompt{readyComboPrompts.length > 1 ? "s" : ""} ={" "}
                   {comboCount} combination{comboCount > 1 ? "s" : ""}
                 </p>
+              ) : null}
+
+              {comboIsComplete ? (
+                <div className="combo-summary combo-summary-complete">
+                  <span>
+                    {comboResults.length}/{comboCount} combination
+                    {comboCount > 1 ? "s" : ""} complete
+                  </span>
+                  <button
+                    type="button"
+                    className="combo-download-all-btn"
+                    onClick={downloadAllComboResults}
+                    disabled={comboResults.length === 0}
+                  >
+                    ↓ Download All ({comboResults.length})
+                  </button>
+                </div>
               ) : null}
             </>
           ) : null}

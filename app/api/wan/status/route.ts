@@ -25,6 +25,7 @@ export async function GET(request: Request) {
     `https://api.runpod.ai/v2/${WAN_ENDPOINT_ID}/status/${encodeURIComponent(id)}`,
     apiKey,
     { method: "GET" },
-    15_000
+    15_000,
+    3
   );
 }
