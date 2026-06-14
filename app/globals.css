@@ -862,6 +862,29 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.video-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  text-decoration: none;
+  margin-top: 8px;
+}
+
+.video-download-btn:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: #ffffff;
+}
+
 /* ---------- Combo matrix ---------- */
 
 .combo-matrix-wrapper {

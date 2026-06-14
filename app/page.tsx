@@ -118,6 +118,19 @@ async function downloadAsZip(
   URL.revokeObjectURL(url);
 }
 
+async function downloadVideo(url: string, filename: string) {
+  const response = await fetch(url);
+  const blob = await response.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(blobUrl);
+}
+
 function isVideoUrl(value: string) {
   return /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(value);
 }
@@ -1500,24 +1513,39 @@ export default function Home() {
 
           {!(mode === "combo" && (comboResults.length > 0 || comboProgress.total > 0)) &&
           batchResults.length === 0 ? (
-            <div className="preview-frame">
-              {preview?.kind === "image" ? (
-                <img src={preview.src} alt="Generated result" />
-              ) : null}
+            <>
+              <div className="preview-frame">
+                {preview?.kind === "image" ? (
+                  <img src={preview.src} alt="Generated result" />
+                ) : null}
+                {preview?.kind === "video" ? (
+                  <video src={preview.src} controls playsInline />
+                ) : null}
+                {!preview && !isLoading ? (
+                  <div className="empty-preview">
+                    <span>No output yet</span>
+                  </div>
+                ) : null}
+                {!preview && isLoading ? (
+                  <div className="empty-preview">
+                    <span>Waiting for output...</span>
+                  </div>
+                ) : null}
+              </div>
               {preview?.kind === "video" ? (
-                <video src={preview.src} controls playsInline />
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    downloadVideo(preview.src, "generated_video.mp4");
+                  }}
+                  className="video-download-btn"
+                  title="Download video"
+                >
+                  ↓ Download
+                </a>
               ) : null}
-              {!preview && !isLoading ? (
-                <div className="empty-preview">
-                  <span>No output yet</span>
-                </div>
-              ) : null}
-              {!preview && isLoading ? (
-                <div className="empty-preview">
-                  <span>Waiting for output...</span>
-                </div>
-              ) : null}
-            </div>
+            </>
           ) : null}
         </section>
       </section>
