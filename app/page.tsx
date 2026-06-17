@@ -3,7 +3,7 @@
 import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import JSZip from "jszip";
 
-type Mode = "image" | "batch" | "video" | "combo";
+type Mode = "image" | "batch" | "video" | "combo" | "comboLogo";
 type MediaKind = "image" | "video";
 
 type Preview = {
@@ -237,17 +237,19 @@ export default function Home() {
   const [statusText, setStatusText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [activeDropTarget, setActiveDropTarget] = useState<string | null>(null);
+  const [comboLogoImage, setComboLogoImage] = useState<ReferenceImage | null>(null);
   const [comboImages, setComboImages] = useState<ReferenceImage[]>([]);
   const [comboPrompts, setComboPrompts] = useState<ComboPrompt[]>([]);
   const [comboResults, setComboResults] = useState<ComboResult[]>([]);
   const [comboProgress, setComboProgress] = useState({ done: 0, total: 0 });
+  const isComboMode = mode === "combo" || mode === "comboLogo";
 
   const readyBatchGroups = useMemo(
     () => batchGroups.filter((group) => group.images.length > 0),
     [batchGroups]
   );
   const hasReferences =
-    mode === "combo"
+    isComboMode
       ? comboImages.length > 0
       : mode === "batch"
         ? unassignedImages.length > 0 || batchGroups.length > 0
@@ -265,30 +267,31 @@ export default function Home() {
     }
   }, [apiKey]);
 
-  const comboCount = comboImages.length * comboPrompts.length;
-
   const readyComboPrompts = useMemo(
     () => comboPrompts.filter((p) => p.text.trim().length > 0),
     [comboPrompts]
   );
 
-  const comboHasContent = comboImages.length > 0 || comboPrompts.length > 0;
+  const comboCount = comboImages.length * readyComboPrompts.length;
+
+  const comboHasContent =
+    comboLogoImage !== null || comboImages.length > 0 || comboPrompts.length > 0;
 
   const actionLabel = useMemo(() => {
     if (isLoading) {
-      if (mode === "combo") return "Generating combinations...";
+      if (isComboMode) return "Generating combinations...";
       if (mode === "batch") return "Generating images...";
       if (mode === "video") return "Generating video...";
       return "Generating image...";
     }
 
-    if (mode === "combo") {
+    if (isComboMode) {
       const promptCount = readyComboPrompts.length;
       const imgCount = comboImages.length;
       if (imgCount > 0 && promptCount > 0) {
         return `Generate ${imgCount}×${promptCount} (${comboCount} images)`;
       }
-      return "Generate Combo";
+      return mode === "comboLogo" ? "Generate Combo Logo" : "Generate Combo";
     }
 
     if (mode === "batch" && readyBatchGroups.length > 1) {
@@ -298,7 +301,7 @@ export default function Home() {
     if (mode === "batch") return "Generate Batch";
     if (mode === "image") return "Generate Image";
     return "Generate Video";
-  }, [isLoading, mode, readyBatchGroups.length, readyComboPrompts.length, comboImages.length, comboCount]);
+  }, [comboCount, comboImages.length, isComboMode, isLoading, mode, readyBatchGroups.length, readyComboPrompts.length]);
 
   async function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
     const files = event.target.files;
@@ -574,7 +577,7 @@ export default function Home() {
       return "Enter your RunPod API key first.";
     }
 
-    if (mode === "combo") {
+    if (isComboMode) {
       return "";
     }
 
@@ -660,12 +663,36 @@ export default function Home() {
     setComboImages((prev) => [...prev, ...newImages]);
   }
 
+  async function handleComboLogoImageChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = event.target.files;
+    setError("");
+    setComboResults([]);
+    setComboProgress({ done: 0, total: 0 });
+
+    if (!files || files.length === 0) return;
+
+    const { images: newImages, skippedFileNames } = await filesToReferenceImages(files);
+    showSkippedFileError(skippedFileNames);
+
+    const [newLogo] = newImages;
+    if (!newLogo) return;
+
+    setComboLogoImage(newLogo);
+  }
+
+  function removeComboLogoImage() {
+    setComboLogoImage(null);
+    setComboResults([]);
+    setComboProgress({ done: 0, total: 0 });
+  }
+
   function removeComboImage(id: string) {
     setComboImages((prev) => prev.filter((img) => img.id !== id));
     setComboResults((prev) => prev.filter((r) => r.imageId !== id));
   }
 
   function clearCombo() {
+    setComboLogoImage(null);
     setComboImages([]);
     setComboPrompts([]);
     setComboResults([]);
@@ -686,6 +713,7 @@ export default function Home() {
 
   function validateComboForm() {
     if (!apiKey.trim()) return "Enter your RunPod API key first.";
+    if (mode === "comboLogo" && !comboLogoImage) return "Add a logo image first.";
     if (comboImages.length === 0) return "Add at least one reference image.";
     if (readyComboPrompts.length === 0) return "Add at least one prompt with text.";
     return "";
@@ -804,7 +832,7 @@ export default function Home() {
         return;
       }
 
-      if (mode === "combo") {
+      if (isComboMode) {
         const validationError = validateComboForm();
         if (validationError) {
           setError(validationError);
@@ -834,17 +862,15 @@ export default function Home() {
           const body: Record<string, unknown> = {
             apiKey: apiKey.trim(),
             prompt: prompt.text.trim(),
-            imageBase64: image.base64,
+            imageBase64: mode === "comboLogo" ? comboLogoImage?.base64 : image.base64,
             ...qwenParams
           };
 
-          const res = await fetch("/api/qwen", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body)
-          });
-          const data = await parseJsonResponse(res);
-          const result = toPreview(data, "image");
+          if (mode === "comboLogo") {
+            body.imageBase642 = image.base64;
+          }
+
+          const result = await generateQwenImage(body, `[${num}/${total}] ${image.fileName}`);
 
           if (result) {
             const entry: ComboResult = {
@@ -982,9 +1008,20 @@ export default function Home() {
             >
               Combo
             </button>
+            <button
+              type="button"
+              className={mode === "comboLogo" ? "active" : ""}
+              onClick={() => {
+                setMode("comboLogo");
+                setStatusText("");
+                setError("");
+              }}
+            >
+              Combo Logo
+            </button>
           </div>
 
-          {mode !== "combo" ? (
+          {!isComboMode ? (
             <>
               <label className="field">
                 <span>Reference Image{mode !== "video" ? "s" : ""}</span>
@@ -1147,8 +1184,48 @@ export default function Home() {
             </div>
           ) : null}
 
-          {mode === "combo" ? (
+          {isComboMode ? (
             <>
+              {mode === "comboLogo" ? (
+                <>
+                  <label className="field">
+                    <span>Logo Image</span>
+                    <div className="file-input-row">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleComboLogoImageChange}
+                      />
+                      {comboLogoImage ? (
+                        <button
+                          type="button"
+                          className="clear-btn"
+                          onClick={removeComboLogoImage}
+                        >
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
+                  </label>
+
+                  {comboLogoImage ? (
+                    <div className="reference-grid">
+                      <div className="reference-thumb">
+                        <img src={comboLogoImage.previewUrl} alt={comboLogoImage.fileName} />
+                        <button
+                          type="button"
+                          className="remove-btn"
+                          onClick={removeComboLogoImage}
+                        >
+                          ×
+                        </button>
+                        <span>{comboLogoImage.fileName}</span>
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+
               <label className="field">
                 <span>Reference Images</span>
                 <div className="file-input-row">
@@ -1221,6 +1298,7 @@ export default function Home() {
 
               {comboCount > 0 && !comboIsComplete ? (
                 <p className="combo-summary">
+                  {mode === "comboLogo" ? "1 logo + " : ""}
                   {comboImages.length} image{comboImages.length > 1 ? "s" : ""} ×{" "}
                   {readyComboPrompts.length} prompt{readyComboPrompts.length > 1 ? "s" : ""} ={" "}
                   {comboCount} combination{comboCount > 1 ? "s" : ""}
@@ -1246,7 +1324,7 @@ export default function Home() {
             </>
           ) : null}
 
-          {mode !== "combo" ? (
+          {!isComboMode ? (
             <label className="field">
               <span>{mode === "video" ? "Video Prompt" : "Image Prompt"}</span>
               <textarea
@@ -1375,18 +1453,20 @@ export default function Home() {
         <section className="panel preview-panel" aria-label="Generation preview">
           <div className="preview-header">
             <h2>
-              {mode === "combo" && comboResults.length > 0
-                ? "Combo Results"
+              {isComboMode && comboResults.length > 0
+                ? mode === "comboLogo"
+                  ? "Combo Logo Results"
+                  : "Combo Results"
                 : batchResults.length > 0
                   ? "Batch Results"
                   : "Latest Preview"}
             </h2>
             <span>
-              {mode === "combo" && comboResults.length > 0
+              {isComboMode && comboResults.length > 0
                 ? `${comboResults.length}/${comboProgress.total} combination${comboProgress.total > 1 ? "s" : ""}`
                 : batchResults.length > 0
                   ? `${batchResults.length} batch${batchResults.length > 1 ? "es" : ""}`
-                  : mode === "combo" && comboProgress.total > 0
+                  : isComboMode && comboProgress.total > 0
                     ? `${comboProgress.done}/${comboProgress.total}`
                     : preview
                       ? preview.kind
@@ -1394,7 +1474,7 @@ export default function Home() {
             </span>
           </div>
 
-          {mode === "combo" && (comboResults.length > 0 || comboProgress.total > 0) ? (
+          {isComboMode && (comboResults.length > 0 || comboProgress.total > 0) ? (
             <div className="combo-matrix-wrapper">
               <div
                 className="combo-matrix"
@@ -1453,7 +1533,7 @@ export default function Home() {
             </div>
           ) : null}
 
-          {!(mode === "combo" && (comboResults.length > 0 || comboProgress.total > 0)) &&
+          {!(isComboMode && (comboResults.length > 0 || comboProgress.total > 0)) &&
           batchResults.length > 0 ? (
             <div className="results-grid">
               {batchResults.map((r) => {
@@ -1498,7 +1578,7 @@ export default function Home() {
             </div>
           ) : null}
 
-          {!(mode === "combo" && (comboResults.length > 0 || comboProgress.total > 0)) &&
+          {!(isComboMode && (comboResults.length > 0 || comboProgress.total > 0)) &&
           batchResults.length === 0 ? (
             <div className="preview-frame">
               {preview?.kind === "image" ? (
