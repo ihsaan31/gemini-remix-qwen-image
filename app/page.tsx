@@ -572,6 +572,26 @@ export default function Home() {
     return data;
   }
 
+  async function generateQwenImage(body: Record<string, unknown>, label?: string): Promise<Preview> {
+    const response = await fetch("/api/qwen", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const data = await parseJsonResponse(response);
+    const result = toPreview(data, "image");
+
+    if (!result) {
+      throw new Error(
+        label
+          ? `No image URL or base64 output was found in the Qwen response for ${label}.`
+          : "No image URL or base64 output was found in the Qwen response."
+      );
+    }
+
+    return result;
+  }
+
   function validateForm() {
     if (!apiKey.trim()) {
       return "Enter your RunPod API key first.";
